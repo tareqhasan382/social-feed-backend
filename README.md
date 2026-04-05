@@ -46,7 +46,7 @@ A high-performance, scalable, and secure Social Feed Application built with **Ne
 
 ### **1. Clone the Repository**
 ```bash
-git clone https://github.com/your-repo/social-feed-app.git
+git clone https://github.com/tareqhasan382/social-feed-backend.git
 cd social-feed-app
 ```
 
