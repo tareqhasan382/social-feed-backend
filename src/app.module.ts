@@ -14,6 +14,8 @@ import { RedisModule } from './module/redis/redis.module';
 import { PostsModule } from './module/posts/posts.module';
 import { CommentsModule } from './module/comments/comments.module';
 import { LikesModule } from './module/likes/likes.module';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { UploadModule } from './module/upload/upload.module';
 
 @Module({
   imports: [
@@ -21,6 +23,11 @@ import { LikesModule } from './module/likes/likes.module';
       isGlobal: true,
       envFilePath: '.env',
     }),
+
+    ThrottlerModule.forRoot([{
+      ttl: 60000,
+      limit: 100,
+    }]),
 
     JwtModule.register({
       global: true,
@@ -37,10 +44,15 @@ import { LikesModule } from './module/likes/likes.module';
     PostsModule,
     CommentsModule,
     LikesModule,
+    UploadModule,
   ],
   controllers: [AppController],
   providers: [
     AppService,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,

@@ -41,11 +41,11 @@ export class PostsService {
 
   /**
    * Retrieves paginated posts with user-specific interaction status.
-   * Implements per-user caching for the first page of the feed.
+   * Implements cursor-based pagination for high performance and scalability.
    */
-  async findAll(userId: string, page = 1, limit = 10) {
-    const skip = (page - 1) * limit;
-    const cacheKey = `posts:feed:${userId}:p${page}:l${limit}`;
+  async findAll(userId: string, cursor?: string, limit = 10, search?: string) {
+    const take = Number(limit);
+    const cacheKey = `posts:feed:${userId}:${cursor || 'start'}:l${limit}:${search || ''}`;
 
     // Attempt to get from cache
     const cachedData = await this.redis.get(cacheKey);
@@ -53,13 +53,19 @@ export class PostsService {
       return JSON.parse(cachedData);
     }
 
+    const where: any = {
+      OR: [
+        { visibility: 'PUBLIC' },
+        { authorId: userId },
+      ],
+    };
+
+    if (search) {
+      where.content = { contains: search, mode: 'insensitive' };
+    }
+
     const posts = await this.prisma.post.findMany({
-      where: {
-        OR: [
-          { visibility: 'PUBLIC' },
-          { authorId: userId },
-        ],
-      },
+      where,
       include: {
         author: {
           select: {
@@ -69,31 +75,54 @@ export class PostsService {
             avatarUrl: true,
           },
         },
+        likes: {
+          take: 3,
+          select: {
+            user: {
+              select: {
+                id: true,
+                avatarUrl: true,
+              },
+            },
+          },
+        },
         _count: {
           select: {
             comments: true,
             likes: true,
           },
         },
-        likes: {
-          where: { userId },
-          select: { id: true },
-        },
       },
       orderBy: { createdAt: 'desc' },
-      skip,
-      take: limit,
+      take: take + 1, // Take one extra to get the next cursor
+      cursor: cursor ? { id: cursor } : undefined,
+      skip: cursor ? 1 : 0,
     });
 
+    let nextCursor: string | undefined = undefined;
+    if (posts.length > take) {
+      const nextItem = posts.pop();
+      nextCursor = nextItem!.id;
+    }
+
     // Map to include interaction status and counts
-    const result = posts.map(post => ({
+    const resultPosts = posts.map(post => ({
       ...post,
-      isLiked: post.likes.length > 0,
+      isLiked: post.likes.some(like => like.user.id === userId),
+      likedUsers: post.likes.map(like => ({
+        id: like.user.id,
+        avatarUrl: like.user.avatarUrl,
+      })),
       likesCount: post._count.likes,
       commentsCount: post._count.comments,
-      likes: undefined, // Remove unnecessary relation data
+      likes: undefined, 
       _count: undefined,
     }));
+
+    const result = {
+      posts: resultPosts,
+      nextCursor,
+    };
 
     // Cache the result for this specific user
     await this.redis.setex(cacheKey, this.CACHE_TTL, JSON.stringify(result));
@@ -180,10 +209,11 @@ export class PostsService {
    * This is done asynchronously to avoid blocking DB operations.
    */
   private async invalidateGlobalFeedCache() {
-    // In a production environment, you might use a more granular invalidation strategy
-    // or a specialized cache invalidation service. For simplicity, we use SCAN.
+    // We use a prefix scan to find all feed-related keys for all users
+    // This ensures that when a new post is created or updated, the feed is refreshed
     const stream = this.redis.scanStream({
       match: 'posts:feed:*',
+      count: 100
     });
 
     stream.on('data', (keys: string[]) => {

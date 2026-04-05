@@ -31,17 +31,17 @@ export class PostsController {
 
   @Get()
   @ApiOperation({ summary: 'Get all posts (Feed)' })
-  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'cursor', required: false, type: String })
   @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'search', required: false, type: String })
   @ApiResponse({ status: 200, description: 'List of posts retrieved successfully' })
   findAll(
     @Req() req: RequestWithUser,
-    @Query('page') page?: number,
+    @Query('cursor') cursor?: string,
     @Query('limit') limit?: number,
+    @Query('search') search?: string,
   ) {
-    //console.log("user--->",req.user)
-    console.log("get api request feed")
-    return this.postsService.findAll(req.user.id, page, limit);
+    return this.postsService.findAll(req.user.id, cursor, limit, search);
   }
 
   @Get(':id')

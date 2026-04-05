@@ -1,83 +1,151 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
-
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
-
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
-
 # Social Feed Application
 
-This repository contains a full-stack social feed application built with **React.js/Next.js** for the frontend and **NestJS + Prisma + PostgreSQL** for the backend. The system supports authentication, posts, comments, likes, and private/public post visibility, designed for scalability and performance.
+A high-performance, scalable, and secure Social Feed Application built with **NestJS** and **React.js**. This project features a robust authentication system, real-time feed interactions, and advanced media handling, all optimized for production-grade performance.
 
 ---
 
-## Features
+## 🚀 Features
 
-### Authentication
-- User registration and login (JWT-based authentication)
-- Profile management
-- Protected routes for feed access
+### **Authentication & Security**
+- **JWT-Based Auth**: Secure login and registration with access and refresh tokens.
+- **Refresh Token Rotation**: Automatic session renewal with `async-mutex` handling on the frontend.
+- **Auto-Logout**: Graceful session termination upon token expiration.
+- **Rate Limiting**: Protection against brute-force and DDoS attacks using `@nestjs/throttler`.
+- **Global Error Handling**: Standardized API responses and exception filters.
 
-### Feed
-- Create, update, and delete posts
-- Upload text and images with posts
-- Private and public posts
-- View posts from all users with newest first
-- Like/unlike posts, comments, and replies
-- Nested comments and replies with like/unlike system
-- Shows which users liked a post, comment, or reply
+### **Feed & Interactions**
+- **Dynamic Feed**: Real-time post listing with **Cursor-based Pagination** for high scalability.
+- **Infinite Scroll**: Seamless user experience using `IntersectionObserver`.
+- **Media Upload**: Optional image and video uploads powered by **Cloudinary**.
+- **Social Interactions**: Like/unlike posts and comments with transactional integrity.
+- **Nested Comments**: Support for multi-level replies and discussions.
+- **Visibility Control**: Toggle between **Public** and **Private** post visibility.
+- **Smart Search**: Content-based search filtering across the feed.
 
-### Backend
-- Scalable service design with Redis caching for feed
-- Optimized for high read/write performance
-- Proper validation and authorization
-- Comprehensive Swagger API documentation
-
----
-
-## Project Structure
-
+### **Performance Optimization**
+- **Redis Caching**: High-speed feed caching to reduce database load.
+- **Query Optimization**: Selective data fetching with Prisma to avoid N+1 problems.
+- **RTK Query**: Efficient frontend state management and cache synchronization.
 
 ---
 
-## Deliverables
+## 🛠 Tech Stack
 
-- **GitHub Repository:** [Insert your repository link here]  
-- **Video Walkthrough:** [Insert YouTube link here, unlisted/private]  
-- **Live Deployment (if available):** [Insert live app URL here]  
-
----
-
-## Decisions & Notes
-
-- Used **Redis caching** for feed to reduce DB load and improve performance.  
-- Implemented **per-user caching** for first page of feed for scalability.  
-- Nested replies and likes designed for efficient aggregation and minimal API calls.  
-- All routes protected with JWT; authorization enforced at service level.  
-- Database modeled for millions of posts and interactions, optimized for reads/writes.  
+| Layer | Technologies |
+| :--- | :--- |
+| **Frontend** | React.js, Redux Toolkit, RTK Query, Tailwind CSS, React Hot Toast |
+| **Backend** | NestJS, Prisma ORM, Swagger (OpenAPI) |
+| **Database** | PostgreSQL |
+| **Caching** | Redis |
+| **Cloud Services** | Cloudinary (Media Hosting) |
+| **DevOps** | Docker, Docker Compose |
 
 ---
 
-## Getting Started
+## 📦 Installation
 
-### Backend
+### **1. Clone the Repository**
 ```bash
-cd backend
+git clone https://github.com/your-repo/social-feed-app.git
+cd social-feed-app
+```
+
+### **2. Setup Environment Variables**
+Create `.env` files in both `buddy-script-backend` and `buddy-script-frontend` directories based on the examples below.
+
+### **3. Start Infrastructure (Docker)**
+Run the database and Redis services using Docker Compose:
+```bash
+docker-compose up -d
+```
+
+### **4. Install Dependencies**
+```bash
+# Backend
+cd buddy-script-backend
 npm install
+npx prisma generate
+npx prisma migrate dev
+
+# Frontend
+cd ../buddy-script-frontend
+npm install
+```
+
+---
+
+## 🔑 Environment Variables
+
+### **Backend (`.env`)**
+```env
+PORT=3000
+DATABASE_URL="postgresql://user:password@localhost:5432/social_db"
+REDIS_URL="redis://localhost:6379"
+
+JWT_ACCESS_SECRET="your_access_secret"
+JWT_REFRESH_SECRET="your_refresh_secret"
+JWT_EXPIRES_IN=3600
+
+CLOUDINARY_CLOUD_NAME="your_cloud_name"
+CLOUDINARY_API_KEY="your_api_key"
+CLOUDINARY_API_SECRET="your_api_secret"
+```
+
+### **Frontend (`.env`)**
+```env
+VITE_APP_BASE_URL="http://localhost:3000"
+```
+
+---
+
+## 🏃 Running the Project
+
+### **Start Backend**
+```bash
+cd buddy-script-backend
 npm run start:dev
+```
+*API will be available at `http://localhost:3000`*
+
+### **Start Frontend**
+```bash
+cd buddy-script-frontend
+npm run dev
+```
+*App will be available at `http://localhost:5173` (default Vite port)*
+
+### **Access API Documentation**
+Once the backend is running, access the Swagger UI at:
+`http://localhost:3000/docs`
+
+---
+
+## 📖 Usage Guide
+
+1. **Onboarding**: Register a new account and log in to access the protected feed.
+2. **Creating Content**: Use the "Post Creator" at the top of the feed. You can add text and optionally upload an image or video.
+3. **Interacting**: Like posts or comments to see the dynamic "Liked Users" avatars. Reply to comments to start a nested discussion.
+4. **Privacy**: Choose "Public" to share with everyone or "Private" to keep posts visible only to you.
+5. **Searching**: Use the search bar in the header to filter posts by content keywords.
+
+---
+
+## 🛡 Security & Scalability Notes
+
+- **Cursor-Based Pagination**: Unlike traditional offset pagination, our cursor-based approach remains consistent and fast even with millions of records.
+- **Mutex Token Refresh**: Prevents "Request Storms" when a token expires by synchronizing refresh calls.
+- **Cache Invalidation**: Redis caches are automatically invalidated when new content is created, ensuring users always see the latest data without sacrificing speed.
+
+---
+
+## 🤝 Contributing
+1. Fork the project.
+2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`).
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`).
+4. Push to the branch (`git push origin feature/AmazingFeature`).
+5. Open a Pull Request.
+
+---
+
+## 📄 License
+Distributed under the MIT License. See `LICENSE` for more information.
