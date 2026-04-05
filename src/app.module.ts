@@ -10,8 +10,10 @@ import { APP_GUARD } from '@nestjs/core';
 import { UsersModule } from './module/users/users.module';
 import { RolesGuard } from './module/auth/guards/roles.guard'; 
 import { JwtAuthGuard } from './module/auth/guards/jwt-auth.guard';
-import { RedisModule } from './redis/redis.module';
-
+import { RedisModule } from './module/redis/redis.module';
+import { PostsModule } from './module/posts/posts.module';
+import { CommentsModule } from './module/comments/comments.module';
+import { LikesModule } from './module/likes/likes.module';
 
 @Module({
   imports: [
@@ -27,18 +29,26 @@ import { RedisModule } from './redis/redis.module';
         expiresIn: Number(process.env.JWT_EXPIRES_IN),
       },
     }),
-    AuthModule,RedisModule, PrismaModule, EmailModule,UsersModule],
+    AuthModule,
+    RedisModule,
+    PrismaModule,
+    EmailModule,
+    UsersModule,
+    PostsModule,
+    CommentsModule,
+    LikesModule,
+  ],
   controllers: [AppController],
-  providers: [AppService,
+  providers: [
+    AppService,
     {
       provide: APP_GUARD,
-      useClass: JwtAuthGuard,  // 👈 All route protected by default
+      useClass: JwtAuthGuard,
     },
     {
       provide: APP_GUARD,
       useClass: RolesGuard,
     },
-
   ],
 })
 export class AppModule { }
