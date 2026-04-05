@@ -9,70 +9,9 @@
 * 🟢 You can import this file directly.
 */
 
-export const Role = {
-  SUPER_ADMIN: 'SUPER_ADMIN',
-  OWNER: 'OWNER',
-  MANAGER: 'MANAGER',
-  CASHIER: 'CASHIER',
-  STOCKMAN: 'STOCKMAN',
-  USER: 'USER'
+export const Visibility = {
+  PUBLIC: 'PUBLIC',
+  PRIVATE: 'PRIVATE'
 } as const
 
-export type Role = (typeof Role)[keyof typeof Role]
-
-
-export const StockType = {
-  IN: 'IN',
-  OUT: 'OUT',
-  ADJUSTMENT: 'ADJUSTMENT',
-  DAMAGE: 'DAMAGE'
-} as const
-
-export type StockType = (typeof StockType)[keyof typeof StockType]
-
-
-export const PaymentMethod = {
-  CASH: 'CASH',
-  BKASH: 'BKASH',
-  NAGAD: 'NAGAD',
-  BANK: 'BANK',
-  DUE: 'DUE'
-} as const
-
-export type PaymentMethod = (typeof PaymentMethod)[keyof typeof PaymentMethod]
-
-
-export const SubscriptionStatus = {
-  ACTIVE: 'ACTIVE',
-  EXPIRED: 'EXPIRED',
-  TRIAL: 'TRIAL',
-  CANCELLED: 'CANCELLED'
-} as const
-
-export type SubscriptionStatus = (typeof SubscriptionStatus)[keyof typeof SubscriptionStatus]
-
-
-export const OtpChannel = {
-  EMAIL: 'EMAIL',
-  PHONE: 'PHONE'
-} as const
-
-export type OtpChannel = (typeof OtpChannel)[keyof typeof OtpChannel]
-
-
-export const OtpType = {
-  REGISTER: 'REGISTER',
-  RESET_PASSWORD: 'RESET_PASSWORD'
-} as const
-
-export type OtpType = (typeof OtpType)[keyof typeof OtpType]
-
-
-export const Plan = {
-  FREE: 'FREE',
-  BASIC: 'BASIC',
-  PRO: 'PRO',
-  ENTERPRISE: 'ENTERPRISE'
-} as const
-
-export type Plan = (typeof Plan)[keyof typeof Plan]
+export type Visibility = (typeof Visibility)[keyof typeof Visibility]

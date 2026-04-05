@@ -18,87 +18,22 @@ export { Prisma }
 export * as $Enums from './enums'
 export * from './enums';
 /**
- * Model Tenant
- * 
- */
-export type Tenant = Prisma.TenantModel
-/**
- * Model Subscription
- * 
- */
-export type Subscription = Prisma.SubscriptionModel
-/**
  * Model User
  * 
  */
 export type User = Prisma.UserModel
 /**
- * Model Session
+ * Model Post
  * 
  */
-export type Session = Prisma.SessionModel
+export type Post = Prisma.PostModel
 /**
- * Model Otp
+ * Model Comment
  * 
  */
-export type Otp = Prisma.OtpModel
+export type Comment = Prisma.CommentModel
 /**
- * Model AuditLog
+ * Model Like
  * 
  */
-export type AuditLog = Prisma.AuditLogModel
-/**
- * Model Product
- * 
- */
-export type Product = Prisma.ProductModel
-/**
- * Model Category
- * 
- */
-export type Category = Prisma.CategoryModel
-/**
- * Model Supplier
- * 
- */
-export type Supplier = Prisma.SupplierModel
-/**
- * Model Customer
- * 
- */
-export type Customer = Prisma.CustomerModel
-/**
- * Model Purchase
- * 
- */
-export type Purchase = Prisma.PurchaseModel
-/**
- * Model PurchaseItem
- * 
- */
-export type PurchaseItem = Prisma.PurchaseItemModel
-/**
- * Model Sale
- * 
- */
-export type Sale = Prisma.SaleModel
-/**
- * Model SaleItem
- * 
- */
-export type SaleItem = Prisma.SaleItemModel
-/**
- * Model Stock
- * 
- */
-export type Stock = Prisma.StockModel
-/**
- * Model StockHistory
- * 
- */
-export type StockHistory = Prisma.StockHistoryModel
-/**
- * Model Damage
- * 
- */
-export type Damage = Prisma.DamageModel
+export type Like = Prisma.LikeModel

@@ -10,6 +10,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { UsersModule } from './module/users/users.module';
 import { RolesGuard } from './module/auth/guards/roles.guard'; 
 import { JwtAuthGuard } from './module/auth/guards/jwt-auth.guard';
+import { RedisModule } from './redis/redis.module';
 
 
 @Module({
@@ -26,7 +27,7 @@ import { JwtAuthGuard } from './module/auth/guards/jwt-auth.guard';
         expiresIn: Number(process.env.JWT_EXPIRES_IN),
       },
     }),
-    AuthModule, PrismaModule, EmailModule,UsersModule],
+    AuthModule,RedisModule, PrismaModule, EmailModule,UsersModule],
   controllers: [AppController],
   providers: [AppService,
     {

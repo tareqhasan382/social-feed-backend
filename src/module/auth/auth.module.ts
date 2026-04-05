@@ -7,20 +7,22 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { EmailModule } from '../email/email.module';
 import { PassportModule } from '@nestjs/passport';          
 import { JwtStrategy } from './strategy/jwt.strategy';   
+import { RedisModule } from '../redis/redis.module';
 
 @Module({
   imports: [
     ConfigModule,
     PrismaModule,
     EmailModule,
-    PassportModule,                                         
+    PassportModule,
+    RedisModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         secret: config.get<string>('JWT_ACCESS_SECRET'),
         signOptions: {
-          expiresIn: '15m',
+          expiresIn: '1h',
         },
       }),
     }),

@@ -2,49 +2,71 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-
 import { PrismaService } from '../../prisma/prisma.service';
+import { UpdateUserDto } from './dto/update-user.dto';
 
 @Injectable()
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async getMe(id: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        avatarUrl: true,
+        isVerified: true,
+        createdAt: true,
+      },
+    });
 
-async getMe(id: string) {
-  const user = await this.prisma.user.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      role: true,
-      isVerified: true,
-      tenantId: true,
-      createdAt: true,
-    },
-  });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
 
-  if (!user) {
-    throw new NotFoundException('User not found');
+    return user;
   }
 
-  return user;
-}
-async findAll() {
-  const data = await this.prisma.user.findMany({
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      role: true,
-      isVerified: true,
-      tenantId: true,
-      createdAt: true,
-    },
-  });
-  //console.log("data------->", data);
-  return data;
-}
+  async update(id: string, dto: UpdateUserDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+    });
 
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
 
+    return this.prisma.user.update({
+      where: { id },
+      data: dto,
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        avatarUrl: true,
+        isVerified: true,
+        updatedAt: true,
+      },
+    });
+  }
+
+  async findAll() {
+    return this.prisma.user.findMany({
+      where: { isDeleted: false },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        avatarUrl: true,
+        isVerified: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
 }

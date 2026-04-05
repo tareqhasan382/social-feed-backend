@@ -8,10 +8,10 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
-import { ApiTags, ApiResponse, ApiBody } from '@nestjs/swagger';
+import { ApiTags, ApiResponse, ApiBody, ApiOperation } from '@nestjs/swagger';
 
 import { AuthService } from './auth.service';
-import { CreateAuthDto } from './dto/create-auth.dto';
+import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { VerifyOtpDto, ResendOtpDto } from './dto/verify-otp.dto';
 import {
@@ -19,18 +19,20 @@ import {
   ResetPasswordDto,
 } from './dto/forgot-password.dto';
 import { Public } from './decorators/public.decorator';
-@Public()
+
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   // ================= REGISTER =================
+  @Public()
   @Post('register')
-  @ApiBody({ type: CreateAuthDto })
-  @ApiResponse({ status: 201 })
+  @ApiOperation({ summary: 'Register a new user' })
+  @ApiBody({ type: RegisterDto })
+  @ApiResponse({ status: 201, description: 'User created successfully. OTP sent to email.' })
   async register(
-    @Body() dto: CreateAuthDto,
+    @Body() dto: RegisterDto,
     @Res() res: Response,
   ) {
     const result = await this.authService.register(dto);
@@ -43,13 +45,15 @@ export class AuthController {
   }
 
   // ================= LOGIN =================
+  @Public()
   @Post('login')
+  @ApiOperation({ summary: 'Login user and get tokens' })
+  @ApiBody({ type: LoginDto })
   async login(
     @Body() dto: LoginDto,
-    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const tokens = await this.authService.login(dto, req);
+    const tokens = await this.authService.login(dto);
   
     res.cookie('refreshToken', tokens.refreshToken, {
       httpOnly: true,
@@ -65,7 +69,9 @@ export class AuthController {
   }
 
   // ================= VERIFY OTP =================
+  @Public()
   @Post('verify-otp')
+  @ApiOperation({ summary: 'Verify email OTP' })
   @ApiBody({ type: VerifyOtpDto })
   async verifyOtp(
     @Body() dto: VerifyOtpDto,
@@ -81,7 +87,9 @@ export class AuthController {
   }
 
   // ================= RESEND OTP =================
+  @Public()
   @Post('resend-otp')
+  @ApiOperation({ summary: 'Resend verification OTP' })
   @ApiBody({ type: ResendOtpDto })
   async resendOtp(
     @Body() dto: ResendOtpDto,
@@ -97,64 +105,32 @@ export class AuthController {
   }
 
   // ================= FORGOT PASSWORD =================
+  @Public()
   @Post('forgot-password')
+  @ApiOperation({ summary: 'Request password reset OTP' })
   @ApiBody({ type: ForgotPasswordDto })
   async forgotPassword(@Body() dto: ForgotPasswordDto) {
     return this.authService.forgotPassword(dto.email);
   }
 
   // ================= RESET PASSWORD =================
+  @Public()
   @Post('reset-password')
+  @ApiOperation({ summary: 'Reset password using OTP' })
   @ApiBody({ type: ResetPasswordDto })
   async resetPassword(@Body() dto: ResetPasswordDto) {
     return this.authService.resetPassword(dto);
   }
 
-  // ================= REFRESH TOKEN =================
-  @Post('refresh-token')
-  async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    const token = req.cookies?.refreshToken;
-    //console.log("refresh-token---->",token)
-  
-    if (!token) throw new UnauthorizedException();
-  
-    const tokens = await this.authService.refreshToken(token, req);
-  
-    // res.cookie('refreshToken', tokens.refreshToken, {
-    //   httpOnly: true,
-    //   secure: true,
-    //   sameSite: 'strict',
-    // });
-  
-    return {
-      success: true,
-      data: { accessToken: tokens },
-    };
-  }
-
+  // ================= LOGOUT =================
   @Post('logout')
-  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    const token = req.cookies?.refreshToken;
-  
-    if (!token) throw new UnauthorizedException();
-  
-    await this.authService.logout(token, req);
-  
+  @ApiOperation({ summary: 'Logout user and clear session' })
+  async logout(@Req() req: any, @Res({ passthrough: true }) res: Response) {
+    const userId = req.user?.id;
+    if (userId) {
+      await this.authService.logout(userId);
+    }
     res.clearCookie('refreshToken');
-  
-    return { success: true };
-  }
-
-  @Post('logout-all')
-  async logoutAll(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    const token = req.cookies?.refreshToken;
-  
-    if (!token) throw new UnauthorizedException();
-  
-    await this.authService.logoutAll(token, req);
-  
-    res.clearCookie('refreshToken');
-  
-    return { success: true };
+    return { success: true, message: 'Logged out successfully' };
   }
 }
