@@ -13,6 +13,7 @@ import { EmailService } from '../email/email.service';
 import { generateOtp } from '../../utils/generateOtp';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { ResetPasswordDto } from './dto/forgot-password.dto';
 import Redis from 'ioredis';
@@ -27,6 +28,38 @@ export class AuthService {
     private jwt: JwtService,
     @Inject('REDIS_CLIENT') private readonly redis: Redis,
   ) {}
+
+  // ================= REFRESH TOKEN =================
+  async refreshToken(dto: RefreshTokenDto) {
+    try {
+      const { refreshToken } = dto;
+
+      const payload = await this.jwt.verifyAsync(refreshToken, {
+        secret: process.env.JWT_REFRESH_SECRET,
+      });
+
+      const user = await this.prisma.user.findFirst({
+        where: { id: payload.sub, isDeleted: false },
+      });
+
+      if (!user) throw new UnauthorizedException('User not found');
+
+      // Verify if the token exists in Redis
+      const storedToken = await this.redis.get(`refresh_token:${user.id}`);
+      if (!storedToken || storedToken !== refreshToken) {
+        throw new UnauthorizedException('Invalid or expired refresh token');
+      }
+
+      const tokens = await this.generateTokens(user.id, user.email);
+
+      // Update Redis with new refresh token
+      await this.redis.setex(`refresh_token:${user.id}`, 7 * 24 * 60 * 60, tokens.refreshToken);
+
+      return tokens;
+    } catch (err) {
+      throw new UnauthorizedException('Invalid or expired refresh token');
+    }
+  }
 
   // ================= REGISTER =================
   async register(dto: RegisterDto) {
@@ -73,7 +106,18 @@ export class AuthService {
     const user = await this.prisma.user.findFirst({
       where: { email, isDeleted: false },
     });
-
+    const users ={
+      id:user?.id,
+      firstName:user?.firstName,
+      lastName:user?.lastName,
+      email:user?.email,
+      avatarUrl:user?.avatarUrl,
+      isVerified:user?.isVerified,
+      isDeleted:user?.isDeleted,
+      createdAt:user?.createdAt,
+      updatedAt:user?.updatedAt,
+      
+    }
     if (!user) throw new UnauthorizedException('Invalid credentials');
     if (!user.isVerified)
       throw new UnauthorizedException('Please verify your email first');
@@ -85,8 +129,7 @@ export class AuthService {
 
     // Store refresh token in Redis for scaling/revocation
     await this.redis.setex(`refresh_token:${user.id}`, 7 * 24 * 60 * 60, tokens.refreshToken);
-
-    return tokens;
+    return {token:tokens,users:users};
   }
 
   // ================= VERIFY OTP =================
@@ -178,7 +221,7 @@ export class AuthService {
     const [accessToken, refreshToken] = await Promise.all([
       this.jwt.signAsync(payload, {
         secret: process.env.JWT_ACCESS_SECRET,
-        expiresIn: '1h',
+        expiresIn: '2m',
       }),
       this.jwt.signAsync(payload, {
         secret: process.env.JWT_REFRESH_SECRET,

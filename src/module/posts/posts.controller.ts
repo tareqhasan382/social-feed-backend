@@ -39,6 +39,8 @@ export class PostsController {
     @Query('page') page?: number,
     @Query('limit') limit?: number,
   ) {
+    //console.log("user--->",req.user)
+    console.log("get api request feed")
     return this.postsService.findAll(req.user.id, page, limit);
   }
 

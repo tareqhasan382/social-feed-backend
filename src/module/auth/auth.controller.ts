@@ -13,6 +13,7 @@ import { ApiTags, ApiResponse, ApiBody, ApiOperation } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { VerifyOtpDto, ResendOtpDto } from './dto/verify-otp.dto';
 import {
   ForgotPasswordDto,
@@ -24,6 +25,34 @@ import { Public } from './decorators/public.decorator';
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
+
+  // ================= REFRESH TOKEN =================
+  @Public()
+  @Post('refresh-token')
+  @ApiOperation({ summary: 'Get new access token using refresh token' })
+  @ApiBody({ type: RefreshTokenDto })
+  async refreshToken(
+    @Body() dto: RefreshTokenDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    //console.log("refesh api hit--------->")
+    const tokens = await this.authService.refreshToken(dto);
+
+    res.cookie('refreshToken', tokens.refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    return {
+      success: true,
+      data: { 
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken
+      },
+    };
+  }
 
   // ================= REGISTER =================
   @Public()
@@ -53,9 +82,10 @@ export class AuthController {
     @Body() dto: LoginDto,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const tokens = await this.authService.login(dto);
+    console.log("login api hit--------->")
+    const {token,users} = await this.authService.login(dto);
   
-    res.cookie('refreshToken', tokens.refreshToken, {
+    res.cookie('refreshToken', token.refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
@@ -64,7 +94,11 @@ export class AuthController {
   
     return {
       success: true,
-      data: { accessToken: tokens.accessToken },
+      data: { 
+        accessToken: token.accessToken,
+        refreshToken: token.refreshToken,
+        user: users 
+      },
     };
   }
 
