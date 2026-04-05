@@ -5,14 +5,16 @@ import Redis from 'ioredis';
 
 @Injectable()
 export class PostsService {
-  private readonly FEED_CACHE_KEY = 'posts:feed';
-  private readonly CACHE_TTL = 300; // 5 minutes
+  private readonly CACHE_TTL = 300; // 5 minutes TTL
 
   constructor(
     private prisma: PrismaService,
     @Inject('REDIS_CLIENT') private readonly redis: Redis,
   ) {}
 
+  /**
+   * Creates a new post and async invalidates the feed cache.
+   */
   async create(userId: string, dto: CreatePostDto) {
     const post = await this.prisma.post.create({
       data: {
@@ -31,21 +33,24 @@ export class PostsService {
       },
     });
 
-    // Invalidate cache when new post is created
-    await this.invalidateFeedCache();
+    // Async invalidation to avoid blocking response
+    this.invalidateGlobalFeedCache();
     
     return post;
   }
 
+  /**
+   * Retrieves paginated posts with user-specific interaction status.
+   * Implements per-user caching for the first page of the feed.
+   */
   async findAll(userId: string, page = 1, limit = 10) {
     const skip = (page - 1) * limit;
-    
-    // Attempt to get from cache for page 1
-    if (page === 1) {
-      const cachedFeed = await this.redis.get(this.FEED_CACHE_KEY);
-      if (cachedFeed) {
-        return JSON.parse(cachedFeed);
-      }
+    const cacheKey = `posts:feed:${userId}:p${page}:l${limit}`;
+
+    // Attempt to get from cache
+    const cachedData = await this.redis.get(cacheKey);
+    if (cachedData) {
+      return JSON.parse(cachedData);
     }
 
     const posts = await this.prisma.post.findMany({
@@ -80,19 +85,18 @@ export class PostsService {
       take: limit,
     });
 
+    // Map to include interaction status and counts
     const result = posts.map(post => ({
       ...post,
       isLiked: post.likes.length > 0,
       likesCount: post._count.likes,
       commentsCount: post._count.comments,
-      likes: undefined,
+      likes: undefined, // Remove unnecessary relation data
       _count: undefined,
     }));
 
-    // Cache page 1
-    if (page === 1) {
-      await this.redis.setex(this.FEED_CACHE_KEY, this.CACHE_TTL, JSON.stringify(result));
-    }
+    // Cache the result for this specific user
+    await this.redis.setex(cacheKey, this.CACHE_TTL, JSON.stringify(result));
 
     return result;
   }
@@ -125,7 +129,7 @@ export class PostsService {
     if (!post) throw new NotFoundException('Post not found');
     
     if (post.visibility === 'PRIVATE' && post.authorId !== userId) {
-      throw new ForbiddenException('You do not have permission to view this post');
+      throw new ForbiddenException('Access denied');
     }
 
     return {
@@ -138,34 +142,54 @@ export class PostsService {
     };
   }
 
+  /**
+   * Updates a post and async invalidates the user's specific cache.
+   */
   async update(id: string, userId: string, dto: UpdatePostDto) {
     const post = await this.prisma.post.findUnique({ where: { id } });
     
     if (!post) throw new NotFoundException('Post not found');
-    if (post.authorId !== userId) throw new ForbiddenException('You can only update your own posts');
+    if (post.authorId !== userId) throw new ForbiddenException('Ownership required');
 
     const updatedPost = await this.prisma.post.update({
       where: { id },
       data: dto,
     });
 
-    await this.invalidateFeedCache();
+    this.invalidateGlobalFeedCache();
     return updatedPost;
   }
 
+  /**
+   * Removes a post and async invalidates the cache.
+   */
   async remove(id: string, userId: string) {
     const post = await this.prisma.post.findUnique({ where: { id } });
     
     if (!post) throw new NotFoundException('Post not found');
-    if (post.authorId !== userId) throw new ForbiddenException('You can only delete your own posts');
+    if (post.authorId !== userId) throw new ForbiddenException('Ownership required');
 
     await this.prisma.post.delete({ where: { id } });
-    await this.invalidateFeedCache();
     
+    this.invalidateGlobalFeedCache();
     return { message: 'Post deleted successfully' };
   }
 
-  private async invalidateFeedCache() {
-    await this.redis.del(this.FEED_CACHE_KEY);
+  /**
+   * Invalidates all feed caches using a pattern match.
+   * This is done asynchronously to avoid blocking DB operations.
+   */
+  private async invalidateGlobalFeedCache() {
+    // In a production environment, you might use a more granular invalidation strategy
+    // or a specialized cache invalidation service. For simplicity, we use SCAN.
+    const stream = this.redis.scanStream({
+      match: 'posts:feed:*',
+    });
+
+    stream.on('data', (keys: string[]) => {
+      if (keys.length > 0) {
+        this.redis.del(...keys);
+      }
+    });
   }
 }

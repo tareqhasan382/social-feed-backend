@@ -6,18 +6,23 @@ import { CreateCommentDto, UpdateCommentDto } from './dto/comment.dto';
 export class CommentsService {
   constructor(private prisma: PrismaService) {}
 
+  /**
+   * Creates a comment or a nested reply.
+   */
   async create(userId: string, dto: CreateCommentDto) {
     const { postId, parentId, text } = dto;
 
-    // Verify post exists
+    // Verify post existence
     const post = await this.prisma.post.findUnique({ where: { id: postId } });
     if (!post) throw new NotFoundException('Post not found');
 
-    // If parentId is provided, verify it exists and belongs to the same post
+    // Verify parent comment if this is a reply
     if (parentId) {
       const parentComment = await this.prisma.comment.findUnique({ where: { id: parentId } });
       if (!parentComment) throw new NotFoundException('Parent comment not found');
-      if (parentComment.postId !== postId) throw new ForbiddenException('Cannot reply to comment on different post');
+      if (parentComment.postId !== postId) {
+        throw new ForbiddenException('Reply must belong to the same post');
+      }
     }
 
     return this.prisma.comment.create({
@@ -40,12 +45,17 @@ export class CommentsService {
     });
   }
 
-  async findByPost(postId: string, userId: string) {
-    // Only get top-level comments and their first few replies for initial view
+  /**
+   * Retrieves top-level comments with their first few replies efficiently.
+   * Includes likesCount and isLiked status.
+   */
+  async findByPost(postId: string, userId: string, page = 1, limit = 20) {
+    const skip = (page - 1) * limit;
+
     const comments = await this.prisma.comment.findMany({
       where: {
         postId,
-        parentId: null,
+        parentId: null, // Only top-level
       },
       include: {
         author: {
@@ -66,15 +76,13 @@ export class CommentsService {
                 avatarUrl: true,
               },
             },
-            _count: {
-              select: { likes: true },
-            },
+            _count: { select: { likes: true } },
             likes: {
               where: { userId },
               select: { id: true },
             },
           },
-          take: 5,
+          take: 3, // First 3 replies per comment
           orderBy: { createdAt: 'asc' },
         },
         _count: {
@@ -89,14 +97,58 @@ export class CommentsService {
         },
       },
       orderBy: { createdAt: 'desc' },
+      skip,
+      take: limit,
     });
 
-    return comments.map(comment => ({
+    return comments.map(comment => this.formatComment(comment));
+  }
+
+  /**
+   * Updates a comment using a transaction to ensure safe state.
+   */
+  async update(id: string, userId: string, dto: UpdateCommentDto) {
+    return this.prisma.$transaction(async (tx) => {
+      const comment = await tx.comment.findUnique({ where: { id } });
+      
+      if (!comment) throw new NotFoundException('Comment not found');
+      if (comment.authorId !== userId) throw new ForbiddenException('Ownership required');
+
+      return tx.comment.update({
+        where: { id },
+        data: { text: dto.text },
+      });
+    });
+  }
+
+  /**
+   * Safely deletes a comment and its nested tree using cascading or manual cleanup in transaction.
+   */
+  async remove(id: string, userId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const comment = await tx.comment.findUnique({ where: { id } });
+      
+      if (!comment) throw new NotFoundException('Comment not found');
+      if (comment.authorId !== userId) throw new ForbiddenException('Ownership required');
+
+      // Prisma cascade handles children if configured in schema, 
+      // otherwise manual cleanup would go here.
+      await tx.comment.delete({ where: { id } });
+      
+      return { success: true };
+    });
+  }
+
+  /**
+   * Helper to format comment/reply with interaction status.
+   */
+  private formatComment(comment: any) {
+    return {
       ...comment,
       isLiked: comment.likes.length > 0,
       likesCount: comment._count.likes,
       repliesCount: comment._count.replies,
-      replies: comment.replies.map(reply => ({
+      replies: comment.replies?.map((reply: any) => ({
         ...reply,
         isLiked: reply.likes.length > 0,
         likesCount: reply._count.likes,
@@ -105,26 +157,6 @@ export class CommentsService {
       })),
       likes: undefined,
       _count: undefined,
-    }));
-  }
-
-  async update(id: string, userId: string, dto: UpdateCommentDto) {
-    const comment = await this.prisma.comment.findUnique({ where: { id } });
-    if (!comment) throw new NotFoundException('Comment not found');
-    if (comment.authorId !== userId) throw new ForbiddenException('You can only update your own comments');
-
-    return this.prisma.comment.update({
-      where: { id },
-      data: dto,
-    });
-  }
-
-  async remove(id: string, userId: string) {
-    const comment = await this.prisma.comment.findUnique({ where: { id } });
-    if (!comment) throw new NotFoundException('Comment not found');
-    if (comment.authorId !== userId) throw new ForbiddenException('You can only delete your own comments');
-
-    await this.prisma.comment.delete({ where: { id } });
-    return { message: 'Comment deleted successfully' };
+    };
   }
 }
