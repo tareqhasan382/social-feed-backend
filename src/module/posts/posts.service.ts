@@ -49,83 +49,114 @@ export class PostsService {
 
     // Attempt to get from cache
     const cachedData = await this.redis.get(cacheKey);
+    let result: any;
+
     if (cachedData) {
-      return JSON.parse(cachedData);
-    }
+      result = JSON.parse(cachedData);
+    } else {
+      const where: any = {
+        OR: [
+          { visibility: 'PUBLIC' },
+          { authorId: userId },
+        ],
+      };
 
-    const where: any = {
-      OR: [
-        { visibility: 'PUBLIC' },
-        { authorId: userId },
-      ],
-    };
+      if (search) {
+        where.content = { contains: search, mode: 'insensitive' };
+      }
 
-    if (search) {
-      where.content = { contains: search, mode: 'insensitive' };
-    }
-
-    const posts = await this.prisma.post.findMany({
-      where,
-      include: {
-        author: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            avatarUrl: true,
+      const posts = await this.prisma.post.findMany({
+        where,
+        include: {
+          author: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              avatarUrl: true,
+            },
           },
-        },
-        likes: {
-          take: 3,
-          select: {
-            user: {
-              select: {
-                id: true,
-                avatarUrl: true,
+          likes: {
+            take: 3,
+            select: {
+              user: {
+                select: {
+                  id: true,
+                  avatarUrl: true,
+                },
               },
             },
           },
-        },
-        _count: {
-          select: {
-            comments: true,
-            likes: true,
+          _count: {
+            select: {
+              comments: true,
+              likes: true,
+            },
           },
         },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: take + 1, // Take one extra to get the next cursor
-      cursor: cursor ? { id: cursor } : undefined,
-      skip: cursor ? 1 : 0,
-    });
+        orderBy: { createdAt: 'desc' },
+        take: take + 1, // Take one extra to get the next cursor
+        cursor: cursor ? { id: cursor } : undefined,
+        skip: cursor ? 1 : 0,
+      });
 
-    let nextCursor: string | undefined = undefined;
-    if (posts.length > take) {
-      const nextItem = posts.pop();
-      nextCursor = nextItem!.id;
+      let nextCursor: string | undefined = undefined;
+      if (posts.length > take) {
+        const nextItem = posts.pop();
+        nextCursor = nextItem!.id;
+      }
+
+      // Map to include interaction status and counts
+      const resultPosts = posts.map(post => ({
+        ...post,
+        isLiked: post.likes.some(like => like.user.id === userId),
+        likedUsers: post.likes.map(like => ({
+          id: like.user.id,
+          avatarUrl: like.user.avatarUrl,
+        })),
+        likesCount: post._count.likes,
+        commentsCount: post._count.comments,
+        likes: undefined, 
+        _count: undefined,
+      }));
+
+      result = {
+        posts: resultPosts,
+        nextCursor,
+      };
+
+      // Cache the result for this specific user
+      await this.redis.setex(cacheKey, this.CACHE_TTL, JSON.stringify(result));
     }
 
-    // Map to include interaction status and counts
-    const resultPosts = posts.map(post => ({
-      ...post,
-      isLiked: post.likes.some(like => like.user.id === userId),
-      likedUsers: post.likes.map(like => ({
-        id: like.user.id,
-        avatarUrl: like.user.avatarUrl,
-      })),
-      likesCount: post._count.likes,
-      commentsCount: post._count.comments,
-      likes: undefined, 
-      _count: undefined,
-    }));
+    // --- REAL-TIME HYBRID SYNC: Merge Redis counts into the result (cached or fresh) ---
+    if (result.posts && result.posts.length > 0) {
+      const pipeline = this.redis.pipeline();
+      result.posts.forEach((post: any) => {
+        pipeline.hgetall(`post:${post.id}:stats`);
+      });
 
-    const result = {
-      posts: resultPosts,
-      nextCursor,
-    };
-
-    // Cache the result for this specific user
-    await this.redis.setex(cacheKey, this.CACHE_TTL, JSON.stringify(result));
+      const stats = await pipeline.exec();
+      
+      result.posts = result.posts.map((post: any, index: number) => {
+        const postStats: any = stats?.[index]?.[1];
+        
+        // If stats exist in Redis, they take precedence over DB counts
+        if (postStats) {
+          return {
+            ...post,
+            likesCount: postStats.likes ? Number(postStats.likes) : post.likesCount,
+            commentsCount: postStats.comments ? Number(postStats.comments) : post.commentsCount,
+          };
+        }
+        
+        // If stats don't exist in Redis yet, initialize them from DB counts for the next request
+        this.redis.hsetnx(`post:${post.id}:stats`, 'likes', post.likesCount);
+        this.redis.hsetnx(`post:${post.id}:stats`, 'comments', post.commentsCount);
+        
+        return post;
+      });
+    }
 
     return result;
   }
@@ -149,8 +180,16 @@ export class PostsService {
           },
         },
         likes: {
-          where: { userId },
-          select: { id: true },
+          take: 3,
+          orderBy: { createdAt: 'desc' },
+          select: {
+            user: {
+              select: {
+                id: true,
+                avatarUrl: true,
+              },
+            },
+          },
         },
       },
     });
@@ -161,14 +200,36 @@ export class PostsService {
       throw new ForbiddenException('Access denied');
     }
 
-    return {
+    const basePost = {
       ...post,
-      isLiked: post.likes.length > 0,
+      isLiked: post.likes.some(like => like.user.id === userId),
+      likedUsers: post.likes.map(like => ({
+        id: like.user.id,
+        avatarUrl: like.user.avatarUrl,
+      })),
       likesCount: post._count.likes,
       commentsCount: post._count.comments,
       likes: undefined,
       _count: undefined,
     };
+
+    // --- REAL-TIME HYBRID SYNC: Merge Redis counts ---
+    const statsKey = `post:${id}:stats`;
+    const postStats = await this.redis.hgetall(statsKey);
+
+    if (postStats && Object.keys(postStats).length > 0) {
+      return {
+        ...basePost,
+        likesCount: postStats.likes ? Number(postStats.likes) : basePost.likesCount,
+        commentsCount: postStats.comments ? Number(postStats.comments) : basePost.commentsCount,
+      };
+    } else {
+      // Initialize Redis if empty
+      this.redis.hsetnx(statsKey, 'likes', basePost.likesCount);
+      this.redis.hsetnx(statsKey, 'comments', basePost.commentsCount);
+    }
+
+    return basePost;
   }
 
   /**

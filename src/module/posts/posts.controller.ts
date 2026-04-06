@@ -16,10 +16,12 @@ import { CreatePostDto, UpdatePostDto } from './dto/post.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RequestWithUser } from '../../common/request-with-user.interface';
 
+
 @ApiTags('Posts')
 @UseGuards(JwtAuthGuard)
 @Controller('posts')
 export class PostsController {
+  
   constructor(private readonly postsService: PostsService) {}
 
   @Post()

@@ -1,10 +1,45 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, Inject } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCommentDto, UpdateCommentDto } from './dto/comment.dto';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
+import Redis from 'ioredis';
 
 @Injectable()
 export class CommentsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly realtimeGateway: RealtimeGateway,
+    @InjectQueue('comment-counts') private readonly commentCountsQueue: Queue,
+    @Inject('REDIS_CLIENT') private readonly redis: Redis,
+  ) {}
+
+  private async getStatsFromRedis(postId: string) {
+    const statsKey = `post:${postId}:stats`;
+    let stats = await this.redis.hgetall(statsKey);
+
+    if (!stats || Object.keys(stats).length === 0) {
+      // Lazy initialization from DB
+      const post = await this.prisma.post.findUnique({
+        where: { id: postId },
+        select: {
+          _count: {
+            select: { likes: true, comments: true }
+          }
+        }
+      });
+
+      if (post) {
+        await this.redis.hset(statsKey, 'likes', post._count.likes, 'comments', post._count.comments);
+        stats = {
+          likes: post._count.likes.toString(),
+          comments: post._count.comments.toString(),
+        };
+      }
+    }
+    return stats;
+  }
 
   /**
    * Creates a comment or a nested reply.
@@ -25,7 +60,7 @@ export class CommentsService {
       }
     }
 
-    return this.prisma.comment.create({
+    const comment = await this.prisma.comment.create({
       data: {
         text,
         authorId: userId,
@@ -43,6 +78,49 @@ export class CommentsService {
         },
       },
     });
+
+    // --- REAL-TIME HYBRID SYNC (REDIS + WEBSOCKET) ---
+    const statsKey = `post:${postId}:stats`;
+    
+    // Ensure initialized
+    await this.getStatsFromRedis(postId);
+    
+    const newCount = await this.redis.hincrby(statsKey, 'comments', 1);
+
+    // Fetch latest 3 likedBy avatars for consistency in payload
+    const latestLikes = await this.prisma.like.findMany({
+      where: { postId },
+      take: 3,
+      orderBy: { createdAt: 'desc' },
+      select: { user: { select: { id: true, avatarUrl: true } } }
+    });
+
+    // Get current likes count from Redis
+    const likesCount = await this.redis.hget(statsKey, 'likes');
+
+    // Immediate WebSocket broadcast
+    this.realtimeGateway.emitPostUpdate(postId, 'commentAdded', {
+      likesCount: Number(likesCount || 0),
+      commentsCount: Number(newCount),
+      likedBy: latestLikes.map(l => ({ id: l.user.id, avatarUrl: l.user.avatarUrl })),
+      comment: parentId ? undefined : comment,
+    });
+
+    // Handle nested reply notification separately
+    if (parentId) {
+      this.realtimeGateway.emitReplyAdded(postId, parentId, comment);
+    }
+
+    // BullMQ for background verification
+    await this.commentCountsQueue.add('sync-counts', {
+      postId,
+      event: 'commentAdded',
+    }, {
+      removeOnComplete: true,
+      delay: 5000
+    });
+
+    return comment;
   }
 
   /**
@@ -131,10 +209,45 @@ export class CommentsService {
       if (!comment) throw new NotFoundException('Comment not found');
       if (comment.authorId !== userId) throw new ForbiddenException('Ownership required');
 
-      // Prisma cascade handles children if configured in schema, 
-      // otherwise manual cleanup would go here.
+      const postId = comment.postId;
+
+      // Prisma cascade handles children if configured in schema
       await tx.comment.delete({ where: { id } });
       
+      // --- REAL-TIME HYBRID SYNC (REDIS + WEBSOCKET) ---
+      const statsKey = `post:${postId}:stats`;
+      
+      // Ensure initialized
+      await this.getStatsFromRedis(postId);
+      
+      const newCount = await this.redis.hincrby(statsKey, 'comments', -1);
+
+      const latestLikes = await this.prisma.like.findMany({
+        where: { postId },
+        take: 3,
+        orderBy: { createdAt: 'desc' },
+        select: { user: { select: { id: true, avatarUrl: true } } }
+      });
+
+      const likesCount = await this.redis.hget(statsKey, 'likes');
+
+      this.realtimeGateway.emitPostUpdate(postId, 'commentDeleted', {
+        likesCount: Number(likesCount || 0),
+        commentsCount: Number(newCount),
+        likedBy: latestLikes.map(l => ({ id: l.user.id, avatarUrl: l.user.avatarUrl })),
+        commentId: id,
+      });
+
+      // Use BullMQ for count synchronization after deletion
+      await this.commentCountsQueue.add('sync-counts', {
+        postId,
+        commentId: id,
+        event: 'commentDeleted',
+      }, {
+        removeOnComplete: true,
+        delay: 5000
+      });
+
       return { success: true };
     });
   }

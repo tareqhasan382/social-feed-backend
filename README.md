@@ -9,9 +9,11 @@ A high-performance, scalable, and secure NestJS-based backend service powering t
 
 ## 🚀 Key Features
 
+- **Hybrid Real-Time Engine**: Atomic Redis-backed counts for likes and comments with immediate WebSocket broadcasts.
+- **Scalable Background Jobs**: BullMQ integration for asynchronous post state synchronization and eventual consistency.
 - **Advanced Authentication**: JWT-based auth with access and refresh token rotation, including Redis-backed session management.
 - **Scalable Feed Engine**: Cursor-based pagination for high-volume data and infinite scroll support.
-- **Caching Layer**: Redis-powered caching for user feeds to minimize database overhead.
+- **Caching Layer**: Redis-powered caching for user feeds and real-time statistics (HINCRBY).
 - **Media Management**: Secure Cloudinary integration for image and video uploads with automatic resource type detection.
 - **Social Graph**: Nested comment systems (replies), transactional like/unlike operations, and dynamic "liked by" user previews.
 - **Security First**: Input validation (class-validator), rate limiting (@nestjs/throttler), and ownership-based authorization.
@@ -24,7 +26,9 @@ A high-performance, scalable, and secure NestJS-based backend service powering t
 - **Framework**: [NestJS](https://nestjs.com/) (Node.js)
 - **Database**: [PostgreSQL](https://www.postgresql.org/)
 - **ORM**: [Prisma](https://www.prisma.io/)
-- **Caching**: [Redis](https://redis.io/)
+- **Caching & Real-time Stats**: [Redis](https://redis.io/)
+- **Background Jobs**: [BullMQ](https://docs.bullmq.io/)
+- **Real-time Communication**: [Socket.io](https://socket.io/)
 - **Documentation**: [Swagger / OpenAPI](https://swagger.io/)
 - **Media**: [Cloudinary](https://cloudinary.com/)
 - **Infrastructure**: Docker & Docker Compose
@@ -34,8 +38,8 @@ A high-performance, scalable, and secure NestJS-based backend service powering t
 ## 📦 Getting Started
 
 ### **Prerequisites**
-- Node.js (v18 or higher)
-- Docker & Docker Compose
+- Node.js (v20 or higher)
+- Docker & Docker Compose (Redis & PostgreSQL)
 - npm or yarn
 
 ### **Installation**
@@ -55,7 +59,9 @@ A high-performance, scalable, and secure NestJS-based backend service powering t
    ```env
    PORT=3000
    DATABASE_URL="postgresql://user:password@localhost:5432/social_db"
-   REDIS_URL="redis://localhost:6379"
+   REDIS_HOST="localhost"
+   REDIS_PORT=6379
+   REDIS_PASSWORD=""
    JWT_ACCESS_SECRET="your_access_secret"
    JWT_REFRESH_SECRET="your_refresh_secret"
    JWT_EXPIRES_IN=3600
@@ -81,6 +87,15 @@ A high-performance, scalable, and secure NestJS-based backend service powering t
 
 ---
 
+## 📖 System Architecture: Real-Time & Consistency
+
+The system uses a **Hybrid Consistency Model** to ensure counts are always accurate:
+1. **Immediate (Atomic)**: When a user likes/comments, Redis `HINCRBY` atomically updates the count, and a WebSocket broadcast is sent immediately.
+2. **Persistent**: The primary interaction is saved in PostgreSQL within a transaction.
+3. **Eventual (Self-Healing)**: A BullMQ worker runs after a short delay to fetch the absolute count from the DB and synchronize it back to Redis and all connected clients.
+
+---
+
 ## 📖 API Endpoints Summary
 
 ### **Auth Module**
@@ -89,8 +104,9 @@ A high-performance, scalable, and secure NestJS-based backend service powering t
 - `POST /api/v1/auth/refresh-token` - Renew access token
 
 ### **Posts Module**
-- `GET /api/v1/posts` - Get paginated feed (Cursor-based)
+- `GET /api/v1/posts` - Get paginated feed (Cursor-based, merged with Redis stats)
 - `POST /api/v1/posts` - Create new post (Optional media)
+- `GET /api/v1/posts/:id` - Get single post (With real-time stats)
 - `PATCH /api/v1/posts/:id` - Update post content
 - `DELETE /api/v1/posts/:id` - Remove post
 
@@ -99,8 +115,11 @@ A high-performance, scalable, and secure NestJS-based backend service powering t
 - `POST /api/v1/comments` - Create comment or reply
 - `DELETE /api/v1/comments/:id` - Delete comment
 
+### **Likes Module**
+- `POST /api/v1/likes/toggle` - Atomic like/unlike toggle
+
 ### **Upload Module**
-- `POST /api/v1/upload` - Secure Cloudinary media upload
+- `POST /api/v1/upload` - Secure Cloudinary media upload (Optional file support)
 
 ---
 

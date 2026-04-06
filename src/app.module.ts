@@ -3,7 +3,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './module/auth/auth.module';
 import { PrismaModule } from './prisma/prisma.module';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { EmailModule } from './module/email/email.module';
 import { APP_GUARD } from '@nestjs/core';
@@ -16,12 +16,24 @@ import { CommentsModule } from './module/comments/comments.module';
 import { LikesModule } from './module/likes/likes.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { UploadModule } from './module/upload/upload.module';
+import { BullModule } from '@nestjs/bullmq';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
+    }),
+
+    BullModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        connection: {
+          host: config.get<string>('REDIS_HOST', 'localhost'),
+          port: config.get<number>('REDIS_PORT', 6379),
+          password: config.get<string>('REDIS_PASSWORD'),
+        },
+      }),
     }),
 
     ThrottlerModule.forRoot([{

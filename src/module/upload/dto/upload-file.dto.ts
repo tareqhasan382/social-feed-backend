@@ -4,7 +4,8 @@ export class UploadFileDto {
   @ApiPropertyOptional({
     type: 'string',
     format: 'binary',
-    description: 'Optional image or video file',
+    description: 'Image or video file (JPG, PNG, GIF, MP4, MOV)',
+    required: false,
   })
   file?: any;
 }
