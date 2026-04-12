@@ -16,7 +16,7 @@ import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { ResetPasswordDto } from './dto/forgot-password.dto';
-import Redis from 'ioredis';
+import { Redis } from '@upstash/redis';
 
 @Injectable()
 export class AuthService {
@@ -53,7 +53,7 @@ export class AuthService {
       const tokens = await this.generateTokens(user.id, user.email);
 
       // Update Redis with new refresh token
-      await this.redis.setex(`refresh_token:${user.id}`, 7 * 24 * 60 * 60, tokens.refreshToken);
+      await this.redis.set(`refresh_token:${user.id}`, tokens.refreshToken, { ex: 7 * 24 * 60 * 60 });
 
       return tokens;
     } catch (err) {
@@ -92,7 +92,7 @@ export class AuthService {
 
     // Generate and Store OTP in Redis
     const otpCode = generateOtp();
-    await this.redis.setex(`otp:register:${email}`, this.OTP_EXPIRY, otpCode);
+    await this.redis.set(`otp:register:${email}`, otpCode, { ex: this.OTP_EXPIRY });
 
     await this.emailService.sendOtpEmail(email, otpCode, 'Registration OTP');
 
@@ -128,7 +128,7 @@ export class AuthService {
     const tokens = await this.generateTokens(user.id, user.email);
 
     // Store refresh token in Redis for scaling/revocation
-    await this.redis.setex(`refresh_token:${user.id}`, 7 * 24 * 60 * 60, tokens.refreshToken);
+    await this.redis.set(`refresh_token:${user.id}`, tokens.refreshToken, { ex: 7 * 24 * 60 * 60 });
     return {token:tokens,users:users};
   }
 
@@ -170,7 +170,7 @@ export class AuthService {
       throw new BadRequestException('Email already verified');
 
     const otpCode = generateOtp();
-    await this.redis.setex(`otp:register:${email}`, this.OTP_EXPIRY, otpCode);
+    await this.redis.set(`otp:register:${email}`, otpCode, { ex: this.OTP_EXPIRY });
 
     await this.emailService.sendOtpEmail(email, otpCode, 'Verification OTP (Resent)');
 
@@ -186,7 +186,7 @@ export class AuthService {
     if (!user) throw new NotFoundException('User not found');
 
     const otp = generateOtp();
-    await this.redis.setex(`otp:reset_password:${email}`, this.OTP_EXPIRY, otp);
+    await this.redis.set(`otp:reset_password:${email}`, otp, { ex: this.OTP_EXPIRY });
 
     await this.emailService.sendPasswordResetEmail(email, otp);
 

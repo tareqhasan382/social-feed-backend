@@ -3,7 +3,7 @@ import { Job } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { Logger, Inject } from '@nestjs/common';
-import Redis from 'ioredis';
+import { Redis } from '@upstash/redis';
 
 @Processor('comment-counts')
 export class CommentCountsProcessor extends WorkerHost {
@@ -52,7 +52,10 @@ export class CommentCountsProcessor extends WorkerHost {
 
         // --- EVENTUAL CONSISTENCY: Sync DB counts to Redis ---
         const statsKey = `post:${postId}:stats`;
-        await this.redis.hset(statsKey, 'likes', dbLikes, 'comments', dbComments);
+        await this.redis.hset(statsKey, {
+          likes: dbLikes,
+          comments: dbComments,
+        });
 
         const payload = {
           postId,

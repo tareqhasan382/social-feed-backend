@@ -22,7 +22,7 @@ import { RedisModule } from '../redis/redis.module';
       useFactory: (config: ConfigService) => ({
         secret: config.get<string>('JWT_ACCESS_SECRET'),
         signOptions: {
-          expiresIn: '1h',
+          expiresIn: '2h',
         },
       }),
     }),

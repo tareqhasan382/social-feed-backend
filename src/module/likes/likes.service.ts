@@ -2,7 +2,7 @@ import { Injectable, BadRequestException, NotFoundException, Inject } from '@nes
 import { PrismaService } from '../../prisma/prisma.service';
 import { ToggleLikeDto } from './dto/like.dto';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
-import Redis from 'ioredis';
+import { Redis } from '@upstash/redis';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 
@@ -34,7 +34,10 @@ export class LikesService {
       });
 
       if (post) {
-        await this.redis.hset(statsKey, 'likes', post._count.likes, 'comments', post._count.comments);
+        await this.redis.hset(statsKey, {
+          likes: post._count.likes,
+          comments: post._count.comments,
+        });
         stats = {
           likes: post._count.likes.toString(),
           comments: post._count.comments.toString(),
@@ -172,14 +175,20 @@ export class LikesService {
     Done asynchronously to keep the toggle operation fast.
    */
   private async invalidateFeedCache() {
-    const stream = this.redis.scanStream({
-      match: 'posts:feed:*',
-    });
-
-    stream.on('data', (keys: string[]) => {
-      if (keys.length > 0) {
-        this.redis.del(...keys);
-      }
-    });
+    let cursor = '0';
+    try {
+      do {
+        const [newCursor, keys] = await this.redis.scan(cursor, {
+          match: 'posts:feed:*',
+          count: 100,
+        });
+        if (keys && keys.length > 0) {
+          await this.redis.del(...keys);
+        }
+        cursor = newCursor;
+      } while (cursor !== '0');
+    } catch (err) {
+      console.error('Failed to invalidate feed cache:', err);
+    }
   }
 }

@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, ForbiddenException, Inject } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePostDto, UpdatePostDto } from './dto/post.dto';
-import Redis from 'ioredis';
+import { Redis } from '@upstash/redis';
 
 @Injectable()
 export class PostsService {
@@ -48,11 +48,11 @@ export class PostsService {
     const cacheKey = `posts:feed:${userId}:${cursor || 'start'}:l${limit}:${search || ''}`;
 
     // Attempt to get from cache
-    const cachedData = await this.redis.get(cacheKey);
+    const cachedData = await this.redis.get<any>(cacheKey);
     let result: any;
 
     if (cachedData) {
-      result = JSON.parse(cachedData);
+      result = cachedData;
     } else {
       const where: any = {
         OR: [
@@ -126,7 +126,7 @@ export class PostsService {
       };
 
       // Cache the result for this specific user
-      await this.redis.setex(cacheKey, this.CACHE_TTL, JSON.stringify(result));
+      await this.redis.set(cacheKey, JSON.stringify(result), { ex: this.CACHE_TTL });
     }
 
     // --- REAL-TIME HYBRID SYNC: Merge Redis counts into the result (cached or fresh) ---
@@ -139,7 +139,7 @@ export class PostsService {
       const stats = await pipeline.exec();
       
       result.posts = result.posts.map((post: any, index: number) => {
-        const postStats: any = stats?.[index]?.[1];
+        const postStats: any = stats?.[index];
         
         // If stats exist in Redis, they take precedence over DB counts
         if (postStats) {
@@ -270,17 +270,20 @@ export class PostsService {
    * This is done asynchronously to avoid blocking DB operations.
    */
   private async invalidateGlobalFeedCache() {
-    // We use a prefix scan to find all feed-related keys for all users
-    // This ensures that when a new post is created or updated, the feed is refreshed
-    const stream = this.redis.scanStream({
-      match: 'posts:feed:*',
-      count: 100
-    });
-
-    stream.on('data', (keys: string[]) => {
-      if (keys.length > 0) {
-        this.redis.del(...keys);
-      }
-    });
+    let cursor = '0';
+    try {
+      do {
+        const [newCursor, keys] = await this.redis.scan(cursor, {
+          match: 'posts:feed:*',
+          count: 100,
+        });
+        if (keys && keys.length > 0) {
+          await this.redis.del(...keys);
+        }
+        cursor = newCursor;
+      } while (cursor !== '0');
+    } catch (err) {
+      console.error('Failed to invalidate feed cache:', err);
+    }
   }
 }

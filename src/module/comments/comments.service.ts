@@ -4,7 +4,7 @@ import { CreateCommentDto, UpdateCommentDto } from './dto/comment.dto';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import Redis from 'ioredis';
+import { Redis } from '@upstash/redis';
 
 @Injectable()
 export class CommentsService {
@@ -31,7 +31,10 @@ export class CommentsService {
       });
 
       if (post) {
-        await this.redis.hset(statsKey, 'likes', post._count.likes, 'comments', post._count.comments);
+        await this.redis.hset(statsKey, {
+          likes: post._count.likes,
+          comments: post._count.comments,
+        });
         stats = {
           likes: post._count.likes.toString(),
           comments: post._count.comments.toString(),

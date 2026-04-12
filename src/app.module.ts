@@ -17,6 +17,7 @@ import { LikesModule } from './module/likes/likes.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { UploadModule } from './module/upload/upload.module';
 import { BullModule } from '@nestjs/bullmq';
+import Redis from 'ioredis';
 
 @Module({
   imports: [
@@ -27,13 +28,32 @@ import { BullModule } from '@nestjs/bullmq';
 
     BullModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        connection: {
-          host: config.get<string>('REDIS_HOST', 'localhost'),
-          port: config.get<number>('REDIS_PORT', 6379),
-          password: config.get<string>('REDIS_PASSWORD'),
-        },
-      }),
+      useFactory: (config: ConfigService) => {
+        const upstashToken = config.get<string>('UPSTASH_REDIS_REST_TOKEN');
+        const upstashUrl = config.get<string>('UPSTASH_REDIS_REST_URL');
+        
+        if (upstashToken && upstashUrl) {
+          const host = new URL(upstashUrl).hostname;
+          return {
+            connection: new Redis({
+              host,
+              port: 6379,
+              password: upstashToken,
+              tls: { servername: host },
+              family: 4,
+              maxRetriesPerRequest: null,
+            }),
+          };
+        }
+
+        // Fallback for local development
+        return {
+          connection: {
+            host: config.get<string>('REDIS_HOST', 'localhost'),
+            port: config.get<number>('REDIS_PORT', 6379),
+          },
+        };
+      },
     }),
 
     ThrottlerModule.forRoot([{
@@ -41,12 +61,15 @@ import { BullModule } from '@nestjs/bullmq';
       limit: 100,
     }]),
 
-    JwtModule.register({
-      global: true,
-      secret: process.env.JWT_SECRET,
-      signOptions: {
-        expiresIn: Number(process.env.JWT_EXPIRES_IN),
-      },
+    JwtModule.registerAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        global: true,
+        secret: config.get<string>('JWT_ACCESS_SECRET'),
+        signOptions: {
+          expiresIn: '2h',
+        },
+      }),
     }),
     AuthModule,
     RedisModule,
