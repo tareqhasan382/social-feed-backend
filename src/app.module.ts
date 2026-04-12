@@ -62,9 +62,9 @@ import Redis from 'ioredis';
     }]),
 
     JwtModule.registerAsync({
+      global: true,
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        global: true,
         secret: config.get<string>('JWT_ACCESS_SECRET'),
         signOptions: {
           expiresIn: '2h',
